@@ -62,6 +62,7 @@ void loop() {
   // Delay between measurements.
   delay(delayMS);
   // Get temperature event and print its value.
+  Serial.println(delayMS);
   sensors_event_t event;
   dht.temperature().getEvent(&event);
   if (isnan(event.temperature)) {

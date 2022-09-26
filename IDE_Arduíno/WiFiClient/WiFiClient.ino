@@ -10,6 +10,9 @@
 
 const char* ssid     = "CLARO_2G1DD51B";
 const char* password = "381DD51B";
+//const char* ssid     = "moto g(7) 9225";
+//const char* password = "1234qwer";
+
 
 const char* host = "data.sparkfun.com";
 const char* streamId   = "....................";

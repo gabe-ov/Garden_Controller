@@ -1,67 +1,48 @@
-#include <ESP8266WiFi.h> // Importa a Biblioteca ESP8266WiFi
+//#include <ESP8266WiFi.h> // Importa a Biblioteca ESP8266WiFi
 #include <PubSubClient.h> // Importa a Biblioteca PubSubClient
- 
+#include <WiFi.h>
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include <DHT_U.h>
+
+
 //defines:
 //defines de id mqtt e tópicos para publicação e subscribe
-#define TOPICO_SUBSCRIBE "UNIONMAQUINALEDRECEBE"     //tópico MQTT de escuta
-#define TOPICO_PUBLISH   "tago/data/post"    //tópico MQTT de envio de informações para Broker
+#define TOPICO_SUBSCRIBE "data/receive"     //tópico MQTT de escuta
+#define TOPICO_PUBLISH   "data/post"    //tópico MQTT de envio de informações para Broker
  
-#define ID_MQTT  "UNIONMAQUINAS"     //id mqtt (para identificação de sessão)
-#define ID_USER  "UNIONMAQUINALED"
+#define ID_MQTT  "1"     //id mqtt (para identificação de sessão)
+#define ID_USER  "MQTTGardenController"
 #define ID_SENHA  "ce91b9e8-c99b-4527-b32e-993e9ddd0181"                                
- 
-//defines - mapeamento de pinos do NodeMCU
-#define D0    16
-#define D1    5
-#define D2    4
-#define D3    0
-#define D4    2
-#define D5    14
-#define D6    12
-#define D7    13
-#define D8    15
-#define D9    3
-#define D10   1
- 
+
+#define DHTPIN 23     // Digital pin connected to the DHT sensor 
+// Feather HUZZAH ESP8266 note: use pins 3, 4, 5, 12, 13 or 14 --
+// Pin 15 can work but DHT must be disconnected during program upload.
+
+// Uncomment the type of sensor in use:
+#define DHTTYPE    DHT11     // DHT 11
+//#define DHTTYPE    DHT22     // DHT 22 (AM2302)
+//#define DHTTYPE    DHT21     // DHT 21 (AM2301)
+
+DHT_Unified dht(DHTPIN, DHTTYPE);
+
 // WIFI
-const char* ssid = "ArlaFacil-MAQ-Petrobras"; // SSID / nome da rede WI-FI que deseja se conectar
-const char* PASSWORD = "arla32faciliot"; // Senha da rede WI-FI que deseja se conectar
+const char* ssid = "CLARO_2G1DD51B"; // SSID / nome da rede WI-FI que deseja se conectar
+const char* PASSWORD = "381DD51B"; // Senha da rede WI-FI que deseja se conectar
+//const char* ssid = "moto g(7) 9225"; // SSID / nome da rede WI-FI que deseja se conectar
+//const char* PASSWORD = "1234qwer"; // Senha da rede WI-FI que deseja se conectar
   
 // MQTT
 const char* BROKER_MQTT = "mqtt.tago.io"; //URL do broker MQTT que se deseja utilizar
 int BROKER_PORT = 1883; // Porta do Broker MQTT
 
-String vartotal = "";
-char rele[17];
-char STS[10];
-String STSt = "";
-char STSNV[9];
-String STSNVt = "";
-String STSRELEt = "";
-String sinal = "";
-String densidade = "";
-String T1 = "";
-String T2 = "";
-String T3 = "";
-String FREQ1 = "";
-String FREQ2 = "";
-String STSBLOQ = "";
-String memoFlux = "";
-String STSPRESSFLU = "";
-String STSOSMOSE = "";
-String STSAG = "";
-String STSCABECOTE = "";
-String STSTQA = "";
-String STSARLA = "";
+String Vteste = "";
 
-char vettrans[150];
-int MAX;
 char caractere;
 int i;
-int contvar;
 
 unsigned long lastConnectionTime = 0;            // Ultimo instante que a comunicação foi feita
-const unsigned long postingInterval = 1L * 60000L; // Intervalo entre as comunicações, em milisegundos
+const unsigned long postingInterval = 60000; // Intervalo entre as comunicações, em milisegundos
  
 //Variáveis e objetos globais
 WiFiClient espClient; // Cria o objeto espClient
@@ -71,10 +52,12 @@ PubSubClient MQTT(espClient); // Instancia o Cliente MQTT passando o objeto espC
 void initSerial();
 void initWiFi();
 void initMQTT();
+void initDHT();
+String getTEMP();
+String getUMID();
 void reconectWiFi(); 
 void mqtt_callback(char* topic, byte* payload, unsigned int length);
 void VerificaConexoesWiFIEMQTT(void);
-void InitOutput(void);
  
 /* 
  *  Implementações das funções
@@ -82,10 +65,10 @@ void InitOutput(void);
 void setup() 
 {
     //inicializações:
-    InitOutput();
     initSerial();
     initWiFi();
     initMQTT();
+    initDHT();
 }
   
 //Função: inicializa comunicação serial com baudrate 115200 (para fins de monitorar no terminal serial 
@@ -120,7 +103,74 @@ void initMQTT()
     MQTT.setServer(BROKER_MQTT, BROKER_PORT);   //informa qual broker e porta deve ser conectado
     MQTT.setCallback(mqtt_callback);            //atribui função de callback (função chamada quando qualquer informação de um dos tópicos subescritos chega)
 }
-  
+
+//Função: inicializa DHT11 para monitoramento de temperatura e umidade
+//Parâmetros: nenhum
+//Retorno: nenhum
+void initDHT() 
+{
+    dht.begin();
+    sensor_t sensor;
+    dht.temperature().getSensor(&sensor);
+    Serial.println(F("------------------------------------"));
+    Serial.println(F("Temperature Sensor"));
+    Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
+    Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
+    Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
+    Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("°C"));
+    Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("°C"));
+    Serial.print  (F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("°C"));
+    Serial.println(F("------------------------------------"));
+    // Print humidity sensor details.
+    dht.humidity().getSensor(&sensor);
+    Serial.println(F("Humidity Sensor"));
+    Serial.print  (F("Sensor Type: ")); Serial.println(sensor.name);
+    Serial.print  (F("Driver Ver:  ")); Serial.println(sensor.version);
+    Serial.print  (F("Unique ID:   ")); Serial.println(sensor.sensor_id);
+    Serial.print  (F("Max Value:   ")); Serial.print(sensor.max_value); Serial.println(F("%"));
+    Serial.print  (F("Min Value:   ")); Serial.print(sensor.min_value); Serial.println(F("%"));
+    Serial.print  (F("Resolution:  ")); Serial.print(sensor.resolution); Serial.println(F("%"));
+    Serial.println(F("------------------------------------"));
+}
+
+//Função: puxa temperatura do DHT
+//Parâmetros: nenhum
+//Retorno: Temperatura - String
+String getTEMP()
+{
+    // Get temperature event and print its value.
+    sensors_event_t event;
+    dht.temperature().getEvent(&event);
+    if (isnan(event.temperature)) {
+      Serial.println(F("Error reading temperature!"));
+    }
+    else {
+      Serial.print(F("Temperature: "));
+      Serial.print(event.temperature);
+      Serial.println(F("°C"));
+    }
+    return String(event.temperature);
+}
+
+//Função: puxa temperatura do DHT
+//Parâmetros: nenhum
+//Retorno: Temperatura - String
+String getUMID() 
+{
+    // Get temperature event and print its value.
+    sensors_event_t event;
+    dht.humidity().getEvent(&event);
+    if (isnan(event.relative_humidity)) {
+      Serial.println(F("Error reading humidity!"));
+    }
+    else {
+      Serial.print(F("Humidity: "));
+      Serial.print(event.relative_humidity);
+      Serial.println(F("%"));
+    }
+    return String(event.relative_humidity);
+}
+
 //Função: função de callback 
 //        esta função é chamada toda vez que uma informação de 
 //        um dos tópicos subescritos chega)
@@ -154,14 +204,12 @@ void reconnectMQTT()
         if (MQTT.connect(ID_MQTT, ID_USER, ID_SENHA)) 
         {
             Serial.println("Conectado com sucesso ao broker MQTT!");
-            digitalWrite(D0, HIGH);
             MQTT.subscribe(TOPICO_SUBSCRIBE); 
         } 
         else
         {
             Serial.println("Falha ao reconectar no broker.");
             Serial.println("Havera nova tentatica de conexao em 2s");
-            digitalWrite(D0, LOW);
             delay(2000);
         }
     }
@@ -183,11 +231,9 @@ void reconectWiFi()
     {
         delay(100);
         Serial.print(".");
-        digitalWrite(D1, LOW);
     }
    
     Serial.println();
-    digitalWrite(D1, HIGH);
     Serial.print("Conectado com sucesso na rede ");
     Serial.print(ssid);
     Serial.println("IP obtido: ");
@@ -212,20 +258,19 @@ void VerificaConexoesWiFIEMQTT(void)
 //Retorno: nenhum
 void EnviaMQTT(String var, String val, String uni)
 {
-    String PostData1 = String("{\n\t\t\"variable\": \"") + String(var) + String("\", \n\t\t\"unit\"    : \"") + String(uni) + String("\", \n\t\t\"value\"   : ") + String(val)+ String("\n}");
+    //String PostData1 = String("{\n\t\t\"variable\": \"") + String(var) + String("\", \n\t\t\"unit\"    : \"") + String(uni) + String("\", \n\t\t\"value\"   : ") + String(val)+ String("\n}");
+    String PostData1 = String("{\n\t\t\"variable\": \"") + String(var) + String("\", \n\t\t\"unit\" : \"") + String(uni) + String("\", \n\t\t\"value\" : ") + String(val)+ String("\n}");
     char vet[100];
     PostData1.toCharArray(vet,100);
     Serial.println(vet);
 
     if (MQTT.connect(ID_MQTT, ID_USER, ID_SENHA)) 
     {
-      digitalWrite(D0, HIGH);
       Serial.println("Conectado com sucesso ao broker MQTT!");
       MQTT.publish(TOPICO_PUBLISH, vet); 
     } 
     else
     {
-      digitalWrite(D0, LOW);
       Serial.println("Falha ao reconectar no broker.");
       Serial.println("Havera nova tentatica de conexao em 2s");
       delay(2000);
@@ -233,123 +278,37 @@ void EnviaMQTT(String var, String val, String uni)
 
 }
  
-//Função: inicializa o output em nível lógico baixo
-//Parâmetros: nenhum
-//Retorno: nenhum
-void InitOutput(void)
-{
-    //Ascende LED em D0 para que MQTT OK
-    pinMode(D0, OUTPUT);
-    digitalWrite(D0, LOW);
-    //Ascende LED em D1 para WIFI OK
-    pinMode(D1, OUTPUT);
-    digitalWrite(D1, LOW);
-    //Ascende LED em D2 para SERIAL OK
-    pinMode(D2, OUTPUT);
-    digitalWrite(D2, LOW);
-}
- 
- 
 //programa principal
 void loop() 
 {   
     //garante funcionamento das conexões WiFi e ao broker MQTT
     VerificaConexoesWiFIEMQTT();
-
-    if(Serial.available()>0){
-      digitalWrite(D2, HIGH);
-      vartotal = "";
-      STSt = "";
-      STSNV[9];
-      STSNVt = "";
-      STSRELEt = "";
-      sinal = "";
-      densidade = "";
-      T1 = "";
-      T2 = "";
-      T3 = "";
-      FREQ1 = "";
-      FREQ2 = "";
-      STSBLOQ = "";
-      memoFlux = "";
-      STSPRESSFLU = "";
-      STSOSMOSE = "";
-      STSAG = "";
-      STSCABECOTE = "";
-      STSTQA = "";
-      STSARLA = "";
+    
+    /*if(Serial.available()>0){
+      Vteste = "";
       
-      MAX = 0;
       while(Serial.available() > 0) {
         // Lê byte da serial
         caractere = Serial.read();
-        vartotal.concat(caractere);
+        Vteste.concat(caractere);
         // Aguarda buffer serial ler próximo caractere
         delay(10);
-        MAX++;
       }
-      vartotal.toCharArray(vettrans, 150);
 
-      Serial.println(vettrans);
-      
-      for(i=0, contvar=0; i<MAX; i++){
-        if(vettrans[i] == '#'){
-          contvar++;
-        }
-        
-        if(vettrans[i] != '#' && contvar == 1){
-          sinal.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 2){
-          densidade.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 3){
-          FREQ1.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 4){
-          FREQ2.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 5){
-          STSNVt.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 6){
-          STSRELEt.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 7){
-          STSARLA.concat(vettrans[i]);
-        }
-        if(vettrans[i] != '#' && contvar == 8){
-          STSBLOQ.concat(vettrans[i]);
-        }
-      }
-      
-    }
-    digitalWrite(D2, LOW);
+      Serial.println(Vteste);
+            
+    }*/
+
+    
     
     if (millis() - lastConnectionTime > postingInterval) {
-      EnviaMQTT("Conexap","1"," -");
-      EnviaMQTT("Concentracao",sinal," %");
-      EnviaMQTT("Densidade",densidade," g/ml");
-      EnviaMQTT("STSARLA",STSARLA," DG");
-      EnviaMQTT("STSBLOQ",STSBLOQ," DG");
+        sensors_event_t event;
 
-      STSRELEt.toCharArray(rele, 17);
-      int j; 
-      for(i=0, j=0; i<16; i++){
-        j=i+1;
-        EnviaMQTT(String(String("Rele") + String(j)),String(rele[i])," -");
-      }
-      STSNVt.toCharArray(STSNV, 9);
-      for(i=0, j=0; i<7; i++){
-        j=i+1;
-        EnviaMQTT(String(String("STSNV") + String(j)),String(STSNV[i])," -");
-      }
-      EnviaMQTT("Frequencia1",FREQ1," %");
-      EnviaMQTT("Frequencia2",FREQ2," %");
+        EnviaMQTT("Umidade",getUMID()," %");
+        EnviaMQTT("Temperatura",getTEMP()," °C");   
       
-      
-      lastConnectionTime = millis();
-    } 
+        lastConnectionTime = millis();
+    }
     //keep-alive da comunicação com broker MQTT
     MQTT.loop();
 }
