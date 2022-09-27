@@ -4,3 +4,4 @@ https://github.com/knolleary/pubsubclient
 https://github.com/adafruit/RTClib
 https://github.com/adafruit/DHT-sensor-library
 https://github.com/adafruit/Adafruit_Sensor
+https://github.com/arduino-libraries/NTPClient
